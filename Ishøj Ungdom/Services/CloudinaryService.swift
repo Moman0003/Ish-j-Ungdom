@@ -12,7 +12,7 @@ import UIKit
 class CloudinaryService {
     
     // ⚠️ UDFYLD JERES EGNE VÆRDIER HER:
-    static let cloudName = "DIT_CLOUD_NAME"      // F.eks. "dxyz1234"
+    static let cloudName = "dppd2lrpn"      // F.eks. "dxyz1234"
     static let uploadPreset = "ishoj_ungdom"     // Det preset I oprettede
     
     // Cloudinary upload URL
