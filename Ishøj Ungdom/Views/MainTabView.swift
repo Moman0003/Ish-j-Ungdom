@@ -2,53 +2,69 @@
 //  MainTabView.swift
 //  IshojUngdom
 //
-//  View: Hovedstruktur med tab bar (Forside, Søg, Events, Profil)
+//  View: Hovedtab-navigation med 5 tabs
 //
 
 import SwiftUI
 
 struct MainTabView: View {
-    @State private var valgtTab: Int = 0
+    @EnvironmentObject var authViewModel: AuthViewModel
+    @State private var visOnboarding: Bool = false
     
     var body: some View {
-        TabView(selection: $valgtTab) {
-            // Tab 1: Forside
+        TabView {
             ForsideView()
                 .tabItem {
                     Image(systemName: "house.fill")
                     Text("Forside")
                 }
-                .tag(0)
+                .environmentObject(authViewModel)
             
-            // Tab 2: Søg
             SoegView()
                 .tabItem {
                     Image(systemName: "magnifyingglass")
                     Text("Søg")
                 }
-                .tag(1)
+                .environmentObject(authViewModel)
             
-            // Tab 3: Events
             EventsView()
                 .tabItem {
                     Image(systemName: "calendar")
                     Text("Events")
                 }
-                .tag(2)
+                .environmentObject(authViewModel)
             
-            // Tab 4: Min Profil
+            NewsfeedView()
+                .tabItem {
+                    Image(systemName: "bubble.left.and.bubble.right.fill")
+                    Text("Feed")
+                }
+                .environmentObject(authViewModel)
+            
             ProfilView()
                 .tabItem {
                     Image(systemName: "person.fill")
-                    Text("Min profil")
+                    Text("Profil")
                 }
-                .tag(3)
+                .environmentObject(authViewModel)
         }
-        .tint(.white)  // Aktivt tab ikon farve
+        .tint(.white)
+        .onAppear {
+            // Vis onboarding for nye brugere (US 48)
+            if let bruger = authViewModel.currentUser, !bruger.harSetOnboarding {
+                visOnboarding = true
+            }
+            
+            // Anmod om notifikationstilladelse (US 40)
+            Task {
+                let status = await NotifikationService.shared.tjekTilladelse()
+                if status == .notDetermined {
+                    _ = await NotifikationService.shared.anmodOmTilladelse()
+                }
+            }
+        }
+        .fullScreenCover(isPresented: $visOnboarding) {
+            OnboardingView().environmentObject(authViewModel)
+        }
     }
-}
-
-#Preview {
-    MainTabView()
-        .environmentObject(AuthViewModel())
 }

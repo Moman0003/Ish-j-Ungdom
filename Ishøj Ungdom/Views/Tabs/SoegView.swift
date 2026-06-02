@@ -2,41 +2,40 @@
 //  SoegView.swift
 //  IshojUngdom
 //
-//  View: Søgeside hvor man kan søge efter events fra Firestore
+//  View: Søg blandt events
 //
 
 import SwiftUI
 
 struct SoegView: View {
+    @EnvironmentObject var authViewModel: AuthViewModel
     @StateObject private var eventViewModel = EventViewModel()
     @State private var soegeTekst: String = ""
     
-    private var filtreredeEvents: [Event] {
-        if soegeTekst.isEmpty {
-            return eventViewModel.events
-        }
+    private var resultater: [Event] {
+        if soegeTekst.isEmpty { return [] }
+        let tekst = soegeTekst.lowercased()
         return eventViewModel.events.filter { event in
-            event.titel.localizedCaseInsensitiveContains(soegeTekst) ||
-            event.beskrivelse.localizedCaseInsensitiveContains(soegeTekst) ||
-            event.lokation.localizedCaseInsensitiveContains(soegeTekst)
+            event.titel.lowercased().contains(tekst) ||
+            event.beskrivelse.lowercased().contains(tekst) ||
+            event.lokation.lowercased().contains(tekst) ||
+            (event.kategori?.lowercased().contains(tekst) ?? false)
         }
     }
     
     var body: some View {
         NavigationStack {
             ZStack {
-                Color(red: 0.10, green: 0.10, blue: 0.12)
-                    .ignoresSafeArea()
+                Color(red: 0.10, green: 0.10, blue: 0.12).ignoresSafeArea()
                 
-                VStack(spacing: 16) {
+                VStack(spacing: 0) {
                     // Søgefelt
                     HStack(spacing: 10) {
                         Image(systemName: "magnifyingglass")
                             .foregroundColor(.white.opacity(0.5))
-                        
                         TextField("", text: $soegeTekst,
-                                  prompt: Text("Søg efter events...")
-                            .foregroundColor(.white.opacity(0.4)))
+                                  prompt: Text("Søg events, lokationer, kategorier...")
+                                    .foregroundColor(.white.opacity(0.4)))
                             .textFieldStyle(.plain)
                             .foregroundColor(.white)
                             .tint(.white)
@@ -48,37 +47,64 @@ struct SoegView: View {
                                 Image(systemName: "xmark.circle.fill")
                                     .foregroundColor(.white.opacity(0.5))
                             }
+                            .accessibilityLabel("Ryd søgning")
                         }
                     }
-                    .padding(.horizontal, 18)
-                    .padding(.vertical, 14)
+                    .padding(.horizontal, 16).padding(.vertical, 12)
                     .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 14))
                     .padding(.horizontal, 16)
-                    .padding(.top, 12)
+                    .padding(.top, 8)
                     
-                    // Resultater
-                    if filtreredeEvents.isEmpty {
-                        Spacer()
-                        VStack(spacing: 12) {
+                    if soegeTekst.isEmpty {
+                        VStack(spacing: 14) {
+                            Spacer()
                             Image(systemName: "magnifyingglass")
-                                .font(.system(size: 40))
-                                .foregroundColor(.white.opacity(0.4))
-                            Text(soegeTekst.isEmpty ? "Søg efter events" : "Ingen resultater")
-                                .font(.headline)
+                                .font(.system(size: 50))
+                                .foregroundColor(.white.opacity(0.3))
+                            Text("Søg blandt alle events")
+                                .font(.system(size: 17, weight: .semibold))
                                 .foregroundColor(.white.opacity(0.7))
+                            Text("Find aktiviteter, lokationer eller kategorier")
+                                .font(.system(size: 13))
+                                .foregroundColor(.white.opacity(0.5))
+                            Spacer()
                         }
-                        Spacer()
                     } else {
                         ScrollView {
                             VStack(spacing: 16) {
-                                ForEach(filtreredeEvents) { event in
-                                    NavigationLink(destination: EventDetailView(event: event)) {
-                                        EventCard(event: event)
+                                if resultater.isEmpty {
+                                    TomTilstand.ingenSoegeResultater.padding(.top, 60)
+                                } else {
+                                    HStack {
+                                        Text("\(resultater.count) resultater")
+                                            .font(.system(size: 13))
+                                            .foregroundColor(.white.opacity(0.6))
+                                        Spacer()
                                     }
-                                    .buttonStyle(.plain)
+                                    .padding(.horizontal, 4)
+                                    .padding(.top, 8)
+                                    
+                                    ForEach(resultater) { event in
+                                        NavigationLink(destination: EventDetailView(event: event)) {
+                                            EventCard(
+                                                event: event,
+                                                erFavorit: authViewModel.erFavorit(event.id ?? ""),
+                                                paaToggleFavorit: {
+                                                    Task {
+                                                        if let id = event.id {
+                                                            await authViewModel.toggleFavorit(eventId: id)
+                                                        }
+                                                    }
+                                                }
+                                            )
+                                        }
+                                        .buttonStyle(.plain)
+                                    }
                                 }
                             }
                             .padding(.horizontal, 16)
+                            .padding(.top, 12)
+                            .padding(.bottom, 30)
                         }
                     }
                 }
@@ -90,8 +116,4 @@ struct SoegView: View {
             }
         }
     }
-}
-
-#Preview {
-    SoegView()
 }

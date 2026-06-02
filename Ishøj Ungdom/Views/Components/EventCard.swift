@@ -2,22 +2,33 @@
 //  EventCard.swift
 //  IshojUngdom
 //
-//  Component: Event-boks med Liquid Glass effekt
+//  Component: Event-kort med status, kategori og favorit-knap
 //
 
 import SwiftUI
 
 struct EventCard: View {
     let event: Event
+    var erFavorit: Bool = false
+    var paaToggleFavorit: (() -> Void)? = nil
     
     private var farve: Color {
         switch event.farveTag {
-        case "blue":   return Color.blue.opacity(0.4)
-        case "purple": return Color.purple.opacity(0.4)
-        case "teal":   return Color.teal.opacity(0.4)
-        case "orange": return Color.orange.opacity(0.4)
-        case "pink":   return Color.pink.opacity(0.4)
-        default:       return Color.gray.opacity(0.4)
+        case "blue":   return .blue.opacity(0.4)
+        case "purple": return .purple.opacity(0.4)
+        case "teal":   return .teal.opacity(0.4)
+        case "orange": return .orange.opacity(0.4)
+        case "pink":   return .pink.opacity(0.4)
+        default:       return .gray.opacity(0.4)
+        }
+    }
+    
+    private var statusFarve: Color {
+        switch event.eventStatus {
+        case .aaben:      return .green
+        case .faaPladser: return .orange
+        case .lukket:     return .gray
+        case .aflyst:     return .red
         }
     }
     
@@ -30,12 +41,10 @@ struct EventCard: View {
     
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // Billede header (hvis URL findes)
+            // Billede header
             if let url = event.billedUrl, !url.isEmpty, let imgUrl = URL(string: url) {
                 AsyncImage(url: imgUrl) { image in
-                    image
-                        .resizable()
-                        .scaledToFill()
+                    image.resizable().scaledToFill()
                 } placeholder: {
                     Rectangle().fill(farve)
                 }
@@ -47,46 +56,57 @@ struct EventCard: View {
             }
             
             VStack(alignment: .leading, spacing: 12) {
+                // Top: dato + aldersgruppe + favorit
                 HStack {
                     Text(formateretDato)
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundColor(.white)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
+                        .padding(.horizontal, 12).padding(.vertical, 6)
                         .glassEffect(.regular.tint(farve), in: Capsule())
                     
-                    // Aldersgruppe tag
                     Text(event.aldersgruppeTekst)
                         .font(.system(size: 12, weight: .medium))
                         .foregroundColor(.white.opacity(0.8))
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 5)
+                        .padding(.horizontal, 10).padding(.vertical, 5)
                         .glassEffect(.regular, in: Capsule())
                     
                     Spacer()
                     
-                    // Status
-                    if event.kraeverTilmelding {
-                        if event.erFuldtBooket {
-                            Text("Fuldt booket")
-                                .font(.system(size: 12, weight: .medium))
-                                .foregroundColor(.red.opacity(0.9))
-                        } else {
-                            Text("\(event.ledigPladser) pladser")
-                                .font(.system(size: 12, weight: .medium))
-                                .foregroundColor(.white.opacity(0.7))
+                    if let paaToggleFavorit = paaToggleFavorit {
+                        Button(action: { paaToggleFavorit() }) {
+                            Image(systemName: erFavorit ? "heart.fill" : "heart")
+                                .font(.system(size: 18))
+                                .foregroundColor(erFavorit ? .red : .white.opacity(0.7))
                         }
-                    } else {
-                        Text("Bare mød op")
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundColor(.green.opacity(0.9))
                     }
                 }
                 
+                // Status-badge (kun hvis ikke åben)
+                if event.eventStatus != .aaben {
+                    HStack(spacing: 6) {
+                        Circle().fill(statusFarve).frame(width: 8, height: 8)
+                        Text(event.eventStatus.rawValue)
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(statusFarve)
+                    }
+                }
+                
+                // Titel (streget over hvis aflyst)
                 Text(event.titel)
                     .font(.system(size: 22, weight: .bold))
                     .foregroundColor(.white)
+                    .strikethrough(event.erAflyst, color: .red)
                     .lineLimit(2)
+                
+                // Kategori
+                if let kategori = event.kategori, !kategori.isEmpty {
+                    Text(kategori)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(.white.opacity(0.7))
+                        .padding(.horizontal, 8).padding(.vertical, 3)
+                        .background(Color.white.opacity(0.1))
+                        .clipShape(Capsule())
+                }
                 
                 Text(event.beskrivelse)
                     .font(.system(size: 14))
@@ -103,8 +123,7 @@ struct EventCard: View {
                         .lineLimit(1)
                     
                     if let ugedag = event.ugedag, !ugedag.isEmpty {
-                        Text("•")
-                            .foregroundColor(.white.opacity(0.4))
+                        Text("•").foregroundColor(.white.opacity(0.4))
                         Text(ugedag)
                             .font(.system(size: 12))
                             .foregroundColor(.white.opacity(0.6))

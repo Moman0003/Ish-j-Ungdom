@@ -2,7 +2,13 @@
 //  EventDetailView.swift
 //  IshojUngdom
 //
-//  View: Event detaljer matcher info fra ishojungdom.dk
+//  View: Event detaljer - alle Sprint 3-6 features
+//  - Pakkeliste (US 25)
+//  - Deltagere (US 31)
+//  - Vurdering (US 35, 36)
+//  - Status badge (US 39)
+//  - Venteliste (US 58)
+//  - Admin: send besked, eksporter, vis tilmeldte
 //
 
 import SwiftUI
@@ -11,37 +17,29 @@ struct EventDetailView: View {
     let event: Event
     @EnvironmentObject var authViewModel: AuthViewModel
     @StateObject private var eventViewModel = EventViewModel()
+    @StateObject private var vurderingViewModel = VurderingViewModel()
     @Environment(\.dismiss) private var dismiss
     
-    @State private var visBekraeftelse: Bool = false
-    @State private var bekraeftelsesTekst: String = ""
-    @State private var visRedigerSheet: Bool = false
-    @State private var visSletAlert: Bool = false
+    @State private var visBekraeftelse = false
+    @State private var bekraeftelsesTekst = ""
+    @State private var visRedigerSheet = false
+    @State private var redigerSheetId = UUID()
+    @State private var visSletAlert = false
+    @State private var visAfgivVurdering = false
+    @State private var visTilmeldte = false
+    @State private var visSendBesked = false
+    @State private var visDeltagere = false
+    @State private var harAfgivetVurdering = false
     
     private var farve: Color {
         switch event.farveTag {
-        case "blue":   return Color.blue.opacity(0.4)
-        case "purple": return Color.purple.opacity(0.4)
-        case "teal":   return Color.teal.opacity(0.4)
-        case "orange": return Color.orange.opacity(0.4)
-        case "pink":   return Color.pink.opacity(0.4)
-        default:       return Color.gray.opacity(0.4)
+        case "blue":   return .blue.opacity(0.4)
+        case "purple": return .purple.opacity(0.4)
+        case "teal":   return .teal.opacity(0.4)
+        case "orange": return .orange.opacity(0.4)
+        case "pink":   return .pink.opacity(0.4)
+        default:       return .gray.opacity(0.4)
         }
-    }
-    
-    private var formateretStartDato: String {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "da_DK")
-        f.dateFormat = "d. MMMM yyyy"
-        return f.string(from: event.startDato)
-    }
-    
-    private var formateretSlutDato: String? {
-        guard let slut = event.slutDato else { return nil }
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "da_DK")
-        f.dateFormat = "d. MMMM yyyy"
-        return f.string(from: slut)
     }
     
     private var erTilmeldt: Bool {
@@ -49,22 +47,44 @@ struct EventDetailView: View {
         return eventViewModel.erTilmeldt(eventId: id)
     }
     
+    private var erPaaVenteliste: Bool {
+        guard let id = event.id else { return false }
+        return eventViewModel.erPaaVenteliste(eventId: id)
+    }
+    
     var body: some View {
         ZStack {
-            Color(red: 0.10, green: 0.10, blue: 0.12)
-                .ignoresSafeArea()
+            Color(red: 0.10, green: 0.10, blue: 0.12).ignoresSafeArea()
             
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
-                    // Header billede
                     headerBillede
                     
-                    // Titel
-                    Text(event.titel)
-                        .font(.system(size: 28, weight: .bold))
-                        .foregroundColor(.white)
+                    HStack {
+                        Text(event.titel)
+                            .font(.system(size: 28, weight: .bold))
+                            .foregroundColor(.white)
+                            .strikethrough(event.erAflyst, color: .red)
+                        
+                        Spacer()
+                        
+                        // Favorit knap
+                        Button(action: {
+                            Task {
+                                if let id = event.id {
+                                    await authViewModel.toggleFavorit(eventId: id)
+                                }
+                            }
+                        }) {
+                            Image(systemName: authViewModel.erFavorit(event.id ?? "") ? "heart.fill" : "heart")
+                                .font(.system(size: 22))
+                                .foregroundColor(authViewModel.erFavorit(event.id ?? "") ? .red : .white.opacity(0.7))
+                        }
+                        .accessibilityLabel("Favorit")
+                    }
                     
-                    // Info kort
+                    statusBadge
+                    
                     infoSektion
                     
                     // Beskrivelse
@@ -72,37 +92,45 @@ struct EventDetailView: View {
                         Text("Beskrivelse")
                             .font(.system(size: 18, weight: .bold))
                             .foregroundColor(.white)
-                        
                         Text(event.beskrivelse)
                             .font(.system(size: 15))
                             .foregroundColor(.white.opacity(0.85))
                             .lineSpacing(5)
                             .fixedSize(horizontal: false, vertical: true)
                     }
-                    .padding(.top, 4)
                     
-                    // Praktisk info (ugedag, sted)
+                    // Pakkeliste (US 25)
+                    if let pakkeliste = event.pakkeliste, !pakkeliste.isEmpty {
+                        pakkelisteSektion(pakkeliste)
+                    }
+                    
                     praktiskInfo
                     
-                    // Underviser sektion (kun hvis udfyldt)
+                    // Underviser
                     if let navn = event.underviserNavn, !navn.isEmpty {
                         underviserSektion(navn: navn)
                     }
                     
-                    Spacer().frame(height: 16)
+                    // Deltagere (US 31)
+                    if event.kraeverTilmelding && event.antalTilmeldte > 0 {
+                        deltagereSektion
+                    }
+                    
+                    // Vurdering (US 35, 36)
+                    if event.erFaerdigtAfholdt {
+                        vurderingSektion
+                    }
+                    
+                    Spacer().frame(height: 8)
                     
                     // Admin actions
                     if authViewModel.currentUser?.erAdmin == true {
                         adminActions
-                        Spacer().frame(height: 8)
+                        Spacer().frame(height: 4)
                     }
                     
-                    // Tilmeldingsknap (kun hvis tilmelding kræves)
-                    if event.kraeverTilmelding {
-                        tilmeldingsKnap
-                    } else {
-                        ikkeTilmeldingPaakraevet
-                    }
+                    // Tilmeldingsknap
+                    tilmeldingsKnap
                 }
                 .padding(.horizontal, 20)
                 .padding(.top, 10)
@@ -112,11 +140,27 @@ struct EventDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbarColorScheme(.dark, for: .navigationBar)
         .alert(bekraeftelsesTekst, isPresented: $visBekraeftelse) {
-            Button("OK") { dismiss() }
+            Button("OK") {}
         }
         .sheet(isPresented: $visRedigerSheet) {
             AdminEventFormView(eksisterendeEvent: event)
+                .id(redigerSheetId)
                 .environmentObject(authViewModel)
+        }
+        .sheet(isPresented: $visAfgivVurdering) {
+            AfgivVurderingView(event: event, vurderingViewModel: vurderingViewModel) {
+                harAfgivetVurdering = true
+            }
+            .environmentObject(authViewModel)
+        }
+        .sheet(isPresented: $visTilmeldte) {
+            TilmeldteListView(event: event).environmentObject(authViewModel)
+        }
+        .sheet(isPresented: $visSendBesked) {
+            SendBeskedView(event: event).environmentObject(authViewModel)
+        }
+        .sheet(isPresented: $visDeltagere) {
+            DeltagerListView(event: event).environmentObject(authViewModel)
         }
         .alert("Slet event?", isPresented: $visSletAlert) {
             Button("Annuller", role: .cancel) {}
@@ -124,36 +168,37 @@ struct EventDetailView: View {
                 Task { await sletEvent() }
             }
         } message: {
-            Text("Er du sikker på at du vil slette \(event.titel)? Alle tilmeldinger slettes også.")
+            Text("Er du sikker? Alle tilmeldinger slettes også.")
         }
         .task {
-            if let brugerId = authViewModel.currentUser?.id {
+            if let brugerId = authViewModel.currentUser?.id, let eventId = event.id {
                 await eventViewModel.hentBrugerensBookings(brugerId: brugerId)
+                await vurderingViewModel.hentVurderinger(eventId: eventId)
+                harAfgivetVurdering = await vurderingViewModel.harBrugerAfgivetVurdering(
+                    eventId: eventId, brugerId: brugerId
+                )
             }
         }
     }
     
     // MARK: - Header billede
     private var headerBillede: some View {
-        ZStack {
+        Group {
             if let url = event.billedUrl, !url.isEmpty, let imgUrl = URL(string: url) {
                 AsyncImage(url: imgUrl) { image in
-                    image
-                        .resizable()
-                        .scaledToFill()
+                    image.resizable().scaledToFill()
                 } placeholder: {
-                    placeholderBillede
+                    placeholderView
                 }
                 .frame(height: 220)
                 .clipShape(RoundedRectangle(cornerRadius: 24))
             } else {
-                placeholderBillede
-                    .frame(height: 220)
+                placeholderView.frame(height: 220)
             }
         }
     }
     
-    private var placeholderBillede: some View {
+    private var placeholderView: some View {
         RoundedRectangle(cornerRadius: 24)
             .fill(farve)
             .overlay(
@@ -161,30 +206,85 @@ struct EventDetailView: View {
                     .font(.system(size: 80))
                     .foregroundColor(.white.opacity(0.5))
             )
-            .glassEffect(.regular.tint(farve), in: RoundedRectangle(cornerRadius: 24))
     }
     
-    // MARK: - Info sektion (kompakt overblik)
+    // MARK: - Status badge
+    private var statusBadge: some View {
+        Group {
+            if event.eventStatus != .aaben {
+                HStack(spacing: 8) {
+                    Circle().fill(statusFarve).frame(width: 10, height: 10)
+                    Text(event.eventStatus.rawValue)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(statusFarve)
+                }
+                .padding(.horizontal, 14).padding(.vertical, 8)
+                .glassEffect(.regular.tint(statusFarve.opacity(0.2)), in: Capsule())
+            }
+        }
+    }
+    
+    private var statusFarve: Color {
+        switch event.eventStatus {
+        case .aaben:      return .green
+        case .faaPladser: return .orange
+        case .lukket:     return .gray
+        case .aflyst:     return .red
+        }
+    }
+    
+    // MARK: - Info sektion
     private var infoSektion: some View {
         VStack(spacing: 12) {
-            infoRow(icon: "calendar", titel: "Startdato", vaerdi: formateretStartDato)
+            let startF = DateFormatter()
+            let _ = { startF.locale = Locale(identifier: "da_DK"); startF.dateFormat = "EEEE d. MMMM yyyy" }()
             
-            if let slut = formateretSlutDato {
-                infoRow(icon: "calendar.badge.clock", titel: "Slutdato", vaerdi: slut)
+            infoRow(icon: "calendar", titel: "Startdato",
+                    vaerdi: startF.string(from: event.startDato).capitalized)
+            
+            if let slut = event.slutDato {
+                infoRow(icon: "calendar.badge.clock", titel: "Slutdato",
+                        vaerdi: startF.string(from: slut).capitalized)
             }
             
             infoRow(icon: "person.crop.rectangle", titel: "Aldersgruppe", vaerdi: event.aldersgruppeTekst)
             
+            if let kategori = event.kategori, !kategori.isEmpty {
+                infoRow(icon: "tag", titel: "Kategori", vaerdi: kategori)
+            }
+            
             if event.kraeverTilmelding {
-                infoRow(
-                    icon: "person.2.fill",
-                    titel: "Tilmeldte",
-                    vaerdi: "\(event.antalTilmeldte) / \(event.maxDeltagere)"
-                )
+                infoRow(icon: "person.2.fill", titel: "Tilmeldte",
+                        vaerdi: "\(event.antalTilmeldte) / \(event.maxDeltagere)")
             }
         }
         .padding(20)
         .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 20))
+    }
+    
+    // MARK: - Pakkeliste
+    private func pakkelisteSektion(_ punkter: [String]) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Pakkeliste")
+                .font(.system(size: 18, weight: .bold))
+                .foregroundColor(.white)
+            
+            VStack(alignment: .leading, spacing: 10) {
+                ForEach(punkter, id: \.self) { punkt in
+                    HStack(spacing: 12) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 16))
+                            .foregroundColor(.green.opacity(0.8))
+                        Text(punkt)
+                            .font(.system(size: 15))
+                            .foregroundColor(.white.opacity(0.85))
+                        Spacer()
+                    }
+                }
+            }
+            .padding(16)
+            .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 16))
+        }
     }
     
     // MARK: - Praktisk info
@@ -196,19 +296,18 @@ struct EventDetailView: View {
             
             VStack(alignment: .leading, spacing: 12) {
                 if let ugedag = event.ugedag, !ugedag.isEmpty {
-                    praktiskRow(icon: "calendar", tekst: ugedag + (event.tidspunkt.map { " kl. \($0)" } ?? ""))
-                } else if let tidspunkt = event.tidspunkt, !tidspunkt.isEmpty {
-                    praktiskRow(icon: "clock", tekst: tidspunkt)
+                    praktiskRow(icon: "calendar",
+                                tekst: ugedag + (event.tidspunkt.map { " kl. \($0)" } ?? ""))
+                } else if let tid = event.tidspunkt, !tid.isEmpty {
+                    praktiskRow(icon: "clock", tekst: tid)
                 }
-                
                 praktiskRow(icon: "location.fill", tekst: event.lokation)
-                
                 if !event.kraeverTilmelding {
-                    praktiskRow(icon: "checkmark.circle.fill", tekst: "Kræver ingen tilmelding - bare mød op!")
+                    praktiskRow(icon: "checkmark.circle.fill",
+                                tekst: "Kræver ingen tilmelding – bare mød op!")
                 }
             }
         }
-        .padding(.top, 4)
     }
     
     @ViewBuilder
@@ -225,7 +324,7 @@ struct EventDetailView: View {
         }
     }
     
-    // MARK: - Underviser sektion
+    // MARK: - Underviser
     private func underviserSektion(navn: String) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Underviser")
@@ -233,146 +332,264 @@ struct EventDetailView: View {
                 .foregroundColor(.white)
             
             HStack(alignment: .top, spacing: 14) {
-                // Underviser billede
-                if let url = event.underviserBilledUrl, !url.isEmpty, let imgUrl = URL(string: url) {
-                    AsyncImage(url: imgUrl) { image in
-                        image
-                            .resizable()
-                            .scaledToFill()
-                    } placeholder: {
-                        underviserPlaceholder(navn: navn)
-                    }
-                    .frame(width: 80, height: 80)
-                    .clipShape(Circle())
-                } else {
-                    underviserPlaceholder(navn: navn)
-                        .frame(width: 80, height: 80)
-                }
+                ProfilBillede(
+                    url: event.underviserBilledUrl,
+                    initialer: initialer(navn),
+                    stoerrelse: 80
+                )
                 
                 VStack(alignment: .leading, spacing: 6) {
                     Text(navn)
                         .font(.system(size: 17, weight: .semibold))
                         .foregroundColor(.white)
-                    
-                    if let beskrivelse = event.underviserBeskrivelse, !beskrivelse.isEmpty {
-                        Text(beskrivelse)
+                    if let bio = event.underviserBeskrivelse, !bio.isEmpty {
+                        Text(bio)
                             .font(.system(size: 13))
                             .foregroundColor(.white.opacity(0.7))
                             .lineSpacing(3)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }
-                
                 Spacer()
             }
             .padding(16)
             .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 16))
         }
-        .padding(.top, 4)
     }
     
-    private func underviserPlaceholder(navn: String) -> some View {
-        let initialer = navn.split(separator: " ").compactMap { $0.first }.prefix(2).map(String.init).joined().uppercased()
-        return Circle()
-            .fill(farve)
-            .overlay(
-                Text(initialer)
-                    .font(.system(size: 22, weight: .bold))
+    // MARK: - Deltagere (US 31)
+    private var deltagereSektion: some View {
+        Button(action: { visDeltagere = true }) {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    Text("Deltagere")
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundColor(.white)
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 14))
+                        .foregroundColor(.white.opacity(0.5))
+                }
+                
+                Text("\(event.antalTilmeldte) tilmeldte - tryk for at se alle")
+                    .font(.system(size: 14))
+                    .foregroundColor(.white.opacity(0.6))
+                    .padding(16)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 16))
+            }
+        }
+        .buttonStyle(.plain)
+    }
+    
+    // MARK: - Vurdering
+    private var vurderingSektion: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("Vurderinger")
+                    .font(.system(size: 18, weight: .bold))
                     .foregroundColor(.white)
-            )
+                Spacer()
+                if !vurderingViewModel.vurderinger.isEmpty {
+                    StjerneSnit(
+                        snit: vurderingViewModel.gennemsnit,
+                        antalVurderinger: vurderingViewModel.vurderinger.count
+                    )
+                }
+            }
+            
+            if erTilmeldt && event.kanGivesFeedback && !harAfgivetVurdering {
+                Button(action: { visAfgivVurdering = true }) {
+                    HStack {
+                        Image(systemName: "star")
+                        Text("Vurder dette event")
+                            .font(.system(size: 15, weight: .semibold))
+                    }
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity, minHeight: 46)
+                    .glassEffect(.regular.interactive().tint(.yellow.opacity(0.3)), in: Capsule())
+                }
+            }
+            
+            if vurderingViewModel.vurderinger.isEmpty {
+                Text("Ingen vurderinger endnu")
+                    .font(.system(size: 13))
+                    .foregroundColor(.white.opacity(0.5))
+                    .padding(14)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 14))
+            } else {
+                ForEach(vurderingViewModel.vurderinger.prefix(3)) { v in
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack {
+                            Text(v.brugerFornavn)
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundColor(.white)
+                            Spacer()
+                            HStack(spacing: 2) {
+                                ForEach(1...5, id: \.self) { i in
+                                    Image(systemName: i <= v.stjerner ? "star.fill" : "star")
+                                        .font(.system(size: 11))
+                                        .foregroundColor(.yellow)
+                                }
+                            }
+                        }
+                        if let kommentar = v.kommentar, !kommentar.isEmpty {
+                            Text(kommentar)
+                                .font(.system(size: 13))
+                                .foregroundColor(.white.opacity(0.8))
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                    .padding(12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 12))
+                }
+            }
+        }
     }
     
     // MARK: - Admin actions
     private var adminActions: some View {
-        HStack(spacing: 12) {
-            Button(action: { visRedigerSheet = true }) {
-                HStack(spacing: 8) {
-                    Image(systemName: "pencil")
-                    Text("Rediger")
-                        .font(.system(size: 16, weight: .semibold))
+        VStack(spacing: 10) {
+            HStack(spacing: 10) {
+                adminKnap(icon: "pencil", tekst: "Rediger", tint: .orange) {
+                    redigerSheetId = UUID()
+                    visRedigerSheet = true
                 }
-                .foregroundColor(.white)
-                .frame(maxWidth: .infinity, minHeight: 50)
-                .glassEffect(.regular.interactive().tint(.orange.opacity(0.4)), in: Capsule())
-            }
-            
-            Button(action: { visSletAlert = true }) {
-                HStack(spacing: 8) {
-                    Image(systemName: "trash")
-                    Text("Slet")
-                        .font(.system(size: 16, weight: .semibold))
+                adminKnap(icon: "trash", tekst: "Slet", tint: .red) {
+                    visSletAlert = true
                 }
-                .foregroundColor(.white)
-                .frame(maxWidth: .infinity, minHeight: 50)
-                .glassEffect(.regular.interactive().tint(.red.opacity(0.4)), in: Capsule())
             }
+            HStack(spacing: 10) {
+                adminKnap(icon: "person.2", tekst: "Tilmeldte", tint: .blue) {
+                    visTilmeldte = true
+                }
+                adminKnap(icon: "paperplane", tekst: "Send besked", tint: .green) {
+                    visSendBesked = true
+                }
+            }
+        }
+    }
+    
+    @ViewBuilder
+    private func adminKnap(icon: String, tekst: String, tint: Color, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                Image(systemName: icon).font(.system(size: 13))
+                Text(tekst).font(.system(size: 14, weight: .semibold))
+            }
+            .foregroundColor(.white)
+            .frame(maxWidth: .infinity, minHeight: 44)
+            .glassEffect(.regular.interactive().tint(tint.opacity(0.4)), in: Capsule())
         }
     }
     
     // MARK: - Tilmeldingsknap
     private var tilmeldingsKnap: some View {
-        Button(action: handleTilmelding) {
-            Text(knapTekst)
-                .font(.system(size: 18, weight: .semibold))
-                .foregroundColor(.white)
-                .frame(maxWidth: .infinity, minHeight: 58)
-                .glassEffect(.regular.interactive().tint(knapFarve), in: Capsule())
-        }
-        .disabled(event.erFuldtBooket && !erTilmeldt)
-    }
-    
-    private var ikkeTilmeldingPaakraevet: some View {
-        HStack {
-            Image(systemName: "info.circle.fill")
-            Text("Ingen tilmelding nødvendig - mød bare op!")
-                .font(.system(size: 15, weight: .medium))
-        }
-        .foregroundColor(.white)
-        .frame(maxWidth: .infinity, minHeight: 58)
-        .glassEffect(.regular.tint(.green.opacity(0.3)), in: Capsule())
-    }
-    
-    private var knapTekst: String {
-        if erTilmeldt { return "Afmeld" }
-        if event.erFuldtBooket { return "Fuldt booket" }
-        return "Tilmeld dig"
-    }
-    
-    private var knapFarve: Color {
-        if erTilmeldt { return .red.opacity(0.4) }
-        if event.erFuldtBooket { return .gray.opacity(0.4) }
-        return farve
-    }
-    
-    // MARK: - Actions
-    private func handleTilmelding() {
-        Task {
-            guard let eventId = event.id,
-                  let brugerId = authViewModel.currentUser?.id else { return }
-            
-            if erTilmeldt {
-                let ok = await eventViewModel.afmeldBruger(eventId: eventId, brugerId: brugerId)
-                if ok {
-                    bekraeftelsesTekst = "Du er nu afmeldt"
-                    visBekraeftelse = true
+        Group {
+            if event.erAflyst {
+                statusInfoBoks(tekst: "Dette event er aflyst", farve: .red, icon: "xmark.circle.fill")
+            } else if !event.kraeverTilmelding {
+                statusInfoBoks(tekst: "Ingen tilmelding nødvendig – mød bare op!",
+                              farve: .green, icon: "checkmark.circle.fill")
+            } else if erTilmeldt {
+                Button(action: { Task { await afmeld() } }) {
+                    Text("Afmeld")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity, minHeight: 58)
+                        .glassEffect(.regular.interactive().tint(.red.opacity(0.4)), in: Capsule())
+                }
+            } else if erPaaVenteliste {
+                VStack(spacing: 10) {
+                    statusInfoBoks(tekst: "Du er på ventelisten", farve: .orange, icon: "clock.fill")
+                    Button(action: { Task { await forladVenteliste() } }) {
+                        Text("Forlad venteliste")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundColor(.orange)
+                            .frame(maxWidth: .infinity, minHeight: 44)
+                            .glassEffect(.regular.interactive().tint(.orange.opacity(0.2)), in: Capsule())
+                    }
+                }
+            } else if event.erFuldtBooket {
+                // Tilbyd venteliste (US 58)
+                Button(action: { Task { await tilmeldVenteliste() } }) {
+                    HStack {
+                        Image(systemName: "clock")
+                        Text("Tilmeld venteliste")
+                            .font(.system(size: 17, weight: .semibold))
+                    }
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity, minHeight: 58)
+                    .glassEffect(.regular.interactive().tint(.orange.opacity(0.4)), in: Capsule())
                 }
             } else {
-                let ok = await eventViewModel.tilmeldBruger(eventId: eventId, brugerId: brugerId)
-                if ok {
-                    bekraeftelsesTekst = "Du er nu tilmeldt \(event.titel)!"
-                    visBekraeftelse = true
+                Button(action: { Task { await tilmeld() } }) {
+                    Text("Tilmeld dig")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity, minHeight: 58)
+                        .glassEffect(.regular.interactive().tint(farve), in: Capsule())
                 }
             }
         }
     }
     
-    private func sletEvent() async {
-        guard let eventId = event.id else { return }
-        let ok = await eventViewModel.sletEvent(eventId: eventId)
-        if ok { dismiss() }
+    @ViewBuilder
+    private func statusInfoBoks(tekst: String, farve: Color, icon: String) -> some View {
+        HStack {
+            Image(systemName: icon)
+            Text(tekst).font(.system(size: 15, weight: .medium))
+        }
+        .foregroundColor(.white)
+        .frame(maxWidth: .infinity, minHeight: 58)
+        .glassEffect(.regular.tint(farve.opacity(0.3)), in: Capsule())
     }
     
-    // MARK: - Hjælper
+    // MARK: - Actions
+    private func tilmeld() async {
+        guard let eventId = event.id, let brugerId = authViewModel.currentUser?.id else { return }
+        if await eventViewModel.tilmeldBruger(eventId: eventId, brugerId: brugerId) {
+            bekraeftelsesTekst = "Du er nu tilmeldt!"
+            visBekraeftelse = true
+            // Planlæg reminders
+            NotifikationService.shared.planlaegReminder(
+                eventId: eventId, eventTitel: event.titel, eventStart: event.startDato
+            )
+        }
+    }
+    
+    private func afmeld() async {
+        guard let eventId = event.id, let brugerId = authViewModel.currentUser?.id else { return }
+        if await eventViewModel.afmeldBruger(eventId: eventId, brugerId: brugerId) {
+            bekraeftelsesTekst = "Du er nu afmeldt"
+            visBekraeftelse = true
+            NotifikationService.shared.annullerReminder(eventId: eventId)
+        }
+    }
+    
+    private func tilmeldVenteliste() async {
+        guard let eventId = event.id,
+              let bruger = authViewModel.currentUser,
+              let brugerId = bruger.id else { return }
+        if await eventViewModel.tilmeldVenteliste(eventId: eventId, brugerId: brugerId, brugerNavn: bruger.navn) {
+            bekraeftelsesTekst = "Du er nu på ventelisten"
+            visBekraeftelse = true
+        }
+    }
+    
+    private func forladVenteliste() async {
+        guard let eventId = event.id, let brugerId = authViewModel.currentUser?.id else { return }
+        _ = await eventViewModel.forladVenteliste(eventId: eventId, brugerId: brugerId)
+    }
+    
+    private func sletEvent() async {
+        guard let eventId = event.id else { return }
+        if await eventViewModel.sletEvent(eventId: eventId) { dismiss() }
+    }
+    
+    // MARK: - Hjælpere
     @ViewBuilder
     private func infoRow(icon: String, titel: String, vaerdi: String) -> some View {
         HStack(spacing: 14) {
@@ -380,17 +597,15 @@ struct EventDetailView: View {
                 .font(.system(size: 16))
                 .foregroundColor(.white.opacity(0.7))
                 .frame(width: 24)
-            
             VStack(alignment: .leading, spacing: 2) {
-                Text(titel)
-                    .font(.system(size: 12))
-                    .foregroundColor(.white.opacity(0.5))
-                Text(vaerdi)
-                    .font(.system(size: 15, weight: .medium))
-                    .foregroundColor(.white)
+                Text(titel).font(.system(size: 12)).foregroundColor(.white.opacity(0.5))
+                Text(vaerdi).font(.system(size: 15, weight: .medium)).foregroundColor(.white)
             }
-            
             Spacer()
         }
+    }
+    
+    private func initialer(_ navn: String) -> String {
+        navn.split(separator: " ").compactMap { $0.first }.prefix(2).map(String.init).joined().uppercased()
     }
 }
